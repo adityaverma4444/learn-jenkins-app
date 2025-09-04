@@ -21,7 +21,11 @@ pipeline {
             }
         }
         stage('Test'){
-            agent any
+           agent {
+                docker {
+                    image 'node:18-alpine'
+                    reuseNode true
+                }
             steps{
                 echo 'Test stage'
                 sh 'test -f build/index.html && echo "✅ index.html exists." || echo "❌ index.html not found."'
