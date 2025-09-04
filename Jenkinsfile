@@ -24,6 +24,8 @@ pipeline {
             agent any
             steps{
                 echo 'Test stage'
+                sh 'test -f build/index.html && echo "✅ index.html exists." || echo "❌ index.html not found."'
+                sh 'npm test'
             }
         }
     }
