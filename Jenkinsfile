@@ -33,12 +33,11 @@ pipeline {
                 sh 'test -f build/index.html && echo "✅ index.html exists." || echo "❌ index.html not found."'
                 sh 'npm test'
             }
+            post {
+                always {
+                    junit 'test-results/junit.xml'
+                }
+            }
         }
-        
-  post {
-        always {
-            junit 'test-results/junit.xml'
-        }
-  
     }
 }
