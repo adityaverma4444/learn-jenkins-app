@@ -1,7 +1,9 @@
 pipeline {
-    agent none
+    agent any
 
     stages {
+        /*
+
         stage('Build') {
             agent {
                 docker {
@@ -14,12 +16,13 @@ pipeline {
                     ls -la
                     node --version
                     npm --version
-                    npm ci  # as node_modules not a part we use this
+                    npm ci
                     npm run build
                     ls -la
                 '''
             }
         }
+        */
 
         stage('Test') {
             agent {
@@ -28,16 +31,37 @@ pipeline {
                     reuseNode true
                 }
             }
+
             steps {
-                echo 'Test stage'
-                sh 'test -f build/index.html && echo "✅ index.html exists." || echo "❌ index.html not found."'
-                sh 'npm test'
+                sh '''
+                    #test -f build/index.html
+                    npm test
+                '''
             }
-            post {
-                always {
-                    junit 'test-results/junit.xml'
+        }
+
+        stage('E2E') {
+            agent {
+                docker {
+                    image 'mcr.microsoft.com/playwright:v1.39.0-jammy'
+                    reuseNode true
                 }
             }
+
+            steps {
+                sh '''
+                    npm install serve
+                    node_modules/.bin/serve -s build &
+                    sleep 10
+                    npx playwright test
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            junit 'jest-results/junit.xml'
         }
     }
 }
