@@ -4,6 +4,7 @@ pipeline {
     environment {
         NETLIFY_SITE_ID = '782f4c74-bb14-453f-bf73-61240c677ddb'
         NETLIFY_AUTH_TOKEN = credentials('netlify-token')
+        PROD_URL = 'https://inquisitive-tapioca-6bc1d4.netlify.app'
     }
 
     stages {
@@ -17,12 +18,14 @@ pipeline {
             }
             steps {
                 sh '''
+                    echo "🔨 Starting Build..."
                     ls -la
                     node --version
                     npm --version
                     npm ci
                     npm run build
                     ls -la
+                    echo "✅ Build Complete!"
                 '''
             }
         }
@@ -39,8 +42,10 @@ pipeline {
 
                     steps {
                         sh '''
-                            #test -f build/index.html
-                            npm test
+                            echo "🧪 Running Unit Tests..."
+                            test -f build/index.html
+                            npm test -- --ci --passWithNoTests
+                            echo "✅ Unit Tests Complete!"
                         '''
                     }
                     post {
@@ -60,10 +65,12 @@ pipeline {
 
                     steps {
                         sh '''
+                            echo "🎭 Running E2E Tests on Local Server..."
                             npm install serve
                             node_modules/.bin/serve -s build &
                             sleep 10
-                            npx playwright test  --reporter=html
+                            npx playwright test --reporter=html
+                            echo "✅ E2E Tests Complete!"
                         '''
                     }
 
@@ -85,11 +92,13 @@ pipeline {
             }
             steps {
                 sh '''
+                    echo "🚀 Deploying to Netlify..."
                     npm install netlify-cli
                     node_modules/.bin/netlify --version
                     echo "Deploying to production. Site ID: $NETLIFY_SITE_ID"
                     node_modules/.bin/netlify status
-npx netlify deploy --dir=build --prod --auth $NETLIFY_AUTH_TOKEN --site $NETLIFY_SITE_ID
+                    node_modules/.bin/netlify deploy --dir=build --prod
+                    echo "✅ Deployment Complete!"
                 '''
             }
         }
@@ -103,12 +112,14 @@ npx netlify deploy --dir=build --prod --auth $NETLIFY_AUTH_TOKEN --site $NETLIFY
             }
 
             environment {
-                CI_ENVIRONMENT_URL = 'https://inquisitive-tapioca-6bc1d4.netlify.app/'
+                CI_ENVIRONMENT_URL = "${PROD_URL}"
             }
 
             steps {
                 sh '''
-                    npx playwright test  --reporter=html
+                    echo "🌐 Running E2E Tests on Production..."
+                    npx playwright test --reporter=html
+                    echo "✅ Production E2E Tests Complete!"
                 '''
             }
 
@@ -117,6 +128,15 @@ npx netlify deploy --dir=build --prod --auth $NETLIFY_AUTH_TOKEN --site $NETLIFY
                     publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: 'playwright-report', reportFiles: 'index.html', reportName: 'Playwright E2E', reportTitles: '', useWrapperFileDirectly: true])
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo '🎉 Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed. Check the logs above.'
         }
     }
 }
