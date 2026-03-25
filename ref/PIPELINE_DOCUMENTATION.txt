@@ -1,0 +1,350 @@
+================================================================================
+                    JENKINS CI/CD PIPELINE DOCUMENTATION
+                         learn-jenkins-app Project
+================================================================================
+
+Created: March 2026
+Author: Aditya Verma
+Purpose: Learning Jenkins CI/CD with React + Netlify
+
+================================================================================
+                              OVERVIEW
+================================================================================
+
+This project demonstrates a complete CI/CD pipeline using:
+- Jenkins (automation server)
+- Docker (containerization)
+- React (frontend app)
+- Playwright (E2E testing)
+- Jest (unit testing)
+- Netlify (hosting/deployment)
+
+================================================================================
+                           PROJECT STRUCTURE
+================================================================================
+
+learn-jenkins-app/
+|
+|-- Jenkinsfile           # Pipeline definition (MAIN FILE!)
+|-- Dockerfile            # Custom Docker image for pipeline
+|-- package.json          # Node.js dependencies
+|
+|-- src/                  # React source code
+|   |-- App.js            # Main React component
+|   |-- App.test.js       # Unit tests
+|
+|-- build/                # Production build (created by npm run build)
+|
+|-- e2e/                  # End-to-end tests
+|   |-- app.spec.js       # Playwright test file
+|
+|-- playwright.config.js  # Playwright configuration
+|
+|-- ref/                  # Reference files from tutorial
+    |-- Jenkinsfile (8)
+    |-- Dockerfile (1)
+    |-- PIPELINE_DOCUMENTATION.txt  (this file)
+
+================================================================================
+                         PIPELINE STAGES EXPLAINED
+================================================================================
+
+The pipeline has 5 main stages that run in sequence:
+
++----------+     +-------+     +-------+     +---------------+     +------------+
+| 1.DOCKER | --> | 2.BUILD| --> | 3.TESTS| --> | 4.DEPLOY      | --> | 5.DEPLOY   |
+|          |     |        |     |        |     |    STAGING    |     |    PROD    |
++----------+     +-------+     +-------+     +---------------+     +------------+
+
+
+--------------------------------------------------------------------------------
+STAGE 1: DOCKER
+--------------------------------------------------------------------------------
+Purpose:  Build a custom Docker image with all tools pre-installed
+Command:  docker build -t my-playwright .
+Output:   Docker image named "my-playwright"
+
+WHY DO THIS?
+- Instead of running "npm install netlify-cli serve" in EVERY stage
+- We install them ONCE in this image
+- Result: FASTER pipeline execution!
+
+The Dockerfile contains:
+    FROM mcr.microsoft.com/playwright:v1.39.0-jammy
+    RUN npm install -g netlify-cli node-jq serve
+
+Tools installed:
+- netlify-cli  : Deploy to Netlify from command line
+- node-jq      : Parse JSON files (extract staging URL)
+- serve        : Simple static file server
+
+
+--------------------------------------------------------------------------------
+STAGE 2: BUILD
+--------------------------------------------------------------------------------
+Purpose:  Install dependencies and build the React app
+Image:    node:18-alpine (lightweight Node.js)
+
+Commands:
+    npm ci           # Clean install (better than npm install for CI/CD)
+    npm run build    # Creates production build in /build folder
+
+Output:   /build folder with optimized production files
+
+WHAT IS npm ci?
+- "ci" stands for "clean install"
+- Deletes node_modules and installs fresh from package-lock.json
+- Faster and more reliable for CI/CD pipelines
+- Ensures exact versions from lock file
+
+
+--------------------------------------------------------------------------------
+STAGE 3: TESTS (Parallel)
+--------------------------------------------------------------------------------
+Purpose:  Run both Unit Tests and E2E Tests at the SAME TIME
+
+    +-------------------+
+    |      TESTS        |
+    +-------------------+
+           |
+    +------+------+
+    |             |
+    v             v
++---------+  +---------+
+|  UNIT   |  |   E2E   |
+|  TESTS  |  |  TESTS  |
++---------+  +---------+
+   Jest      Playwright
+
+
+STAGE 3a: Unit Tests (Jest)
+---------------------------
+Image:    node:18-alpine
+Command:  npm test
+Output:   jest-results/junit.xml (test report)
+
+What it tests:
+- Individual functions
+- React components in isolation
+- Fast (runs in milliseconds)
+
+
+STAGE 3b: E2E Tests - LOCAL (Playwright)
+----------------------------------------
+Image:    my-playwright (custom image)
+Commands:
+    serve -s build &              # Start local server in background
+    sleep 10                      # Wait for server to start
+    npx playwright test           # Run browser tests
+
+What it tests:
+- Full application in real browser
+- User interactions (clicks, typing)
+- Tests against LOCAL server (not deployed yet)
+
+Output:   playwright-report/index.html (HTML report)
+Jenkins:  Published as "Local E2E" report
+
+
+--------------------------------------------------------------------------------
+STAGE 4: DEPLOY STAGING
+--------------------------------------------------------------------------------
+Purpose:  Deploy to a PREVIEW URL first (not production!)
+Image:    my-playwright
+
+Commands:
+    netlify deploy --dir=build --json > deploy-output.json
+    CI_ENVIRONMENT_URL=$(node-jq -r '.deploy_url' deploy-output.json)
+    npx playwright test
+
+WHAT IS STAGING?
+- A test/preview environment
+- Looks exactly like production
+- But uses a temporary URL
+- Example: https://deploy-preview-123--yoursite.netlify.app
+
+WHY STAGING?
+- Test on real deployed environment BEFORE production
+- Catch deployment-specific bugs
+- If tests fail, production is NOT affected!
+
+Output:   playwright-report/index.html
+Jenkins:  Published as "Staging E2E" report
+
+
+--------------------------------------------------------------------------------
+STAGE 5: DEPLOY PROD
+--------------------------------------------------------------------------------
+Purpose:  Deploy to PRODUCTION (live site!) + verify with E2E tests
+Image:    my-playwright
+
+Commands:
+    netlify deploy --dir=build --prod    # --prod = production!
+    npx playwright test                   # Verify live site works
+
+Your Live URL: https://inquisitive-tapioca-6bc1d4.netlify.app
+
+Output:   playwright-report/index.html
+Jenkins:  Published as "Prod E2E" report
+
+
+================================================================================
+                         ENVIRONMENT VARIABLES
+================================================================================
+
+These are defined at the top of the Jenkinsfile:
+
+Variable              | Description
+----------------------|----------------------------------------------------
+NETLIFY_SITE_ID       | Your Netlify site's unique identifier
+NETLIFY_AUTH_TOKEN    | Authentication token (stored in Jenkins credentials)
+REACT_APP_VERSION     | Version string using Jenkins build number
+
+
+================================================================================
+                           KEY CONCEPTS
+================================================================================
+
+1. AGENT
+---------
+"agent" tells Jenkins WHERE to run the stage.
+
+agent any           = Run on any available Jenkins node
+agent { docker {    = Run inside a Docker container
+  image 'node:18-alpine'
+  reuseNode true    = Keep files between stages (important!)
+}}
+
+
+2. PARALLEL
+-----------
+Runs multiple stages at the SAME TIME.
+
+parallel {
+    stage('A') { ... }    // These two
+    stage('B') { ... }    // run together!
+}
+
+
+3. POST ACTIONS
+---------------
+Run AFTER a stage completes.
+
+post {
+    always { ... }     // Always run (success or failure)
+    success { ... }    // Only if stage succeeded
+    failure { ... }    // Only if stage failed
+}
+
+
+4. CREDENTIALS
+--------------
+Secure way to store secrets (tokens, passwords).
+
+credentials('netlify-token')
+
+- Stored in Jenkins, not in code!
+- Never visible in logs
+- Set up in: Jenkins > Manage Jenkins > Credentials
+
+
+================================================================================
+                         DOCKER CONFIGURATION
+================================================================================
+
+This project uses Docker-in-Docker (DinD) setup:
+
++------------------+
+|  Jenkins         |     (Main Jenkins container)
+|  Container       |
+|    |             |
+|    v             |
+| +-------------+  |
+| | Docker      |  |     (Allows Jenkins to run Docker commands)
+| | Socket      |  |
+| +-------------+  |
++------------------+
+
+Required containers:
+1. my-jenkins        - Main Jenkins server
+2. jenkins-docker    - Docker-in-Docker for running builds
+
+
+================================================================================
+                         HOW TO RUN THE PIPELINE
+================================================================================
+
+METHOD 1: Automatic (via GitHub webhook)
+----------------------------------------
+1. Push code to GitHub
+2. GitHub notifies Jenkins
+3. Jenkins automatically runs the pipeline
+
+METHOD 2: Manual
+----------------
+1. Open Jenkins: http://localhost:8080
+2. Click on your job/project
+3. Click "Build Now"
+4. Watch the progress in "Build History"
+
+
+================================================================================
+                         TROUBLESHOOTING
+================================================================================
+
+PROBLEM: "docker: command not found"
+SOLUTION: Make sure jenkins-docker container is running:
+          docker start jenkins-docker
+
+PROBLEM: "netlify: command not found"
+SOLUTION: The Docker stage may have failed. Check if my-playwright
+          image exists: docker images | grep my-playwright
+
+PROBLEM: "Permission denied"
+SOLUTION: Check Jenkins credentials for netlify-token
+
+PROBLEM: E2E tests fail
+SOLUTION: Check if the app builds correctly first.
+          Look at the Playwright HTML report in Jenkins.
+
+
+================================================================================
+                         USEFUL COMMANDS
+================================================================================
+
+# Check Jenkins container
+docker ps | grep jenkins
+
+# View Jenkins logs
+docker logs my-jenkins
+
+# Restart Jenkins
+docker restart my-jenkins
+
+# Rebuild custom Docker image manually
+docker build -t my-playwright .
+
+# Run app locally
+npm start
+
+# Build app locally
+npm run build
+
+# Run tests locally
+npm test
+npx playwright test
+
+
+================================================================================
+                              LINKS
+================================================================================
+
+- GitHub Repo:  https://github.com/adityaverma4444/learn-jenkins-app
+- Live Site:    https://inquisitive-tapioca-6bc1d4.netlify.app
+- Jenkins:      http://localhost:8080
+- Netlify:      https://app.netlify.com
+
+
+================================================================================
+                         END OF DOCUMENTATION
+================================================================================
