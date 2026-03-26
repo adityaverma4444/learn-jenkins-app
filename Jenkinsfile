@@ -76,7 +76,7 @@ pipeline {
                     steps {
                         sh '''
                             # test -f build/index.html     # Optional: verify build exists
-                            npm test                        # Run Jest unit tests
+                            CI=true npm test                # CI=true prevents watch mode (runs once and exits)
                         '''
                     }
                     post {
@@ -102,9 +102,9 @@ pipeline {
 
                     steps {
                         sh '''
-                            serve -s build &                # Start local server in background (& = background)
+                            serve -s build &                # Start server in background
                             sleep 10                        # Wait for server to start
-                            npx playwright test --reporter=html    # Run E2E tests
+                            npx playwright test --reporter=html
                         '''
                     }
 
@@ -134,10 +134,6 @@ pipeline {
                 }
             }
 
-            environment {
-                CI_ENVIRONMENT_URL = 'STAGING_URL_TO_BE_SET'    // Playwright uses this to know where to test
-            }
-
             steps {
                 sh '''
                     netlify --version
@@ -147,8 +143,9 @@ pipeline {
                     # Deploy WITHOUT --prod flag = creates a PREVIEW/STAGING URL
                     netlify deploy --dir=build --json > deploy-output.json
                     
-                    # Extract the staging URL from the deploy output
-                    CI_ENVIRONMENT_URL=$(node-jq -r '.deploy_url' deploy-output.json)
+                    # Extract the staging URL and EXPORT it so Playwright can use it
+                    export CI_ENVIRONMENT_URL=$(node-jq -r '.deploy_url' deploy-output.json)
+                    echo "Staging URL: $CI_ENVIRONMENT_URL"
                     
                     # Run E2E tests against the STAGING deployment
                     npx playwright test --reporter=html
