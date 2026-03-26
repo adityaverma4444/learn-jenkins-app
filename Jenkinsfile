@@ -45,7 +45,7 @@ pipeline {
                     ls -la
                     node --version
                     npm --version
-                    npm ci                    # Clean install - better than npm install for CI/CD
+                    npm install               # Install dependencies (faster than npm ci)
                     npm run build             # Creates production build in /build folder
                     ls -la
                 '''
