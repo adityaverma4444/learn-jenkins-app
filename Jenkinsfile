@@ -9,6 +9,7 @@ pipeline {
         NETLIFY_SITE_ID = '782f4c74-bb14-453f-bf73-61240c677ddb'      // Your Netlify site ID (unique identifier)
         NETLIFY_AUTH_TOKEN = credentials('netlify-token')             // Jenkins credential for Netlify (stored securely)
         REACT_APP_VERSION = "1.0.$BUILD_ID"                           // ADDED: Version number using Jenkins build ID
+        NODE_TLS_REJECT_UNAUTHORIZED = '0'                            // Skip SSL check (needed if behind corporate proxy)
     }
 
     // Check git periodically so new commits can trigger builds.
@@ -48,8 +49,8 @@ pipeline {
             }
             steps {
                 sh '''
-                    npm ci --no-audit --no-fund        # Clean install avoids broken node_modules in Jenkins workspace
-                    npm run build             # Creates production build in /build folder
+                    npm install --prefer-offline --no-audit --no-fund
+                    npm run build
                 '''
             }
         }
