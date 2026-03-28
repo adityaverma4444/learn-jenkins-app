@@ -11,6 +11,11 @@ pipeline {
         REACT_APP_VERSION = "1.0.$BUILD_ID"                           // ADDED: Version number using Jenkins build ID
     }
 
+    // Check git periodically so new commits can trigger builds.
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
     stages {
 
         // ============================================================
@@ -21,7 +26,8 @@ pipeline {
         // ============================================================
         stage('Docker') {
             steps {
-                sh 'docker build -t my-playwright .'    // Builds image from Dockerfile in project root
+                // Build once, reuse existing image in next runs.
+                sh 'docker image inspect my-playwright >/dev/null 2>&1 || docker build -t my-playwright .'    // Builds image from Dockerfile in project root
             }
         }
 
@@ -42,12 +48,8 @@ pipeline {
             }
             steps {
                 sh '''
-                    ls -la
-                    node --version
-                    npm --version
-                    npm install               # Install dependencies (faster than npm ci)
+                    npm install --no-audit --no-fund   # Install dependencies with less overhead
                     npm run build             # Creates production build in /build folder
-                    ls -la
                 '''
             }
         }
