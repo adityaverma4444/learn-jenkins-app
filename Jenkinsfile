@@ -48,7 +48,7 @@ pipeline {
             }
             steps {
                 sh '''
-                    npm install --no-audit --no-fund   # Install dependencies with less overhead
+                    npm ci --no-audit --no-fund        # Clean install avoids broken node_modules in Jenkins workspace
                     npm run build             # Creates production build in /build folder
                 '''
             }
